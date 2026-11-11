@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hydra Smart - Protótipo Interativo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @keyframes pulse-light {
+      0%, 100% { opacity: 0.2; transform: scale(0.95); }
+      50% { opacity: 0.8; transform: scale(1.05); }
+    }
+    .glow-effect {
+      animation: pulse-light 3s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-2 sm:p-6 font-sans">
+
+  <!-- PHONE CONTAINER -->
+  <div class="relative w-full max-w-[390px] h-[820px] bg-slate-950 rounded-[48px] border-[8px] border-slate-800 shadow-2xl overflow-hidden flex flex-col justify-between select-none">
+    
+    <!-- TOP NOTCH / DYNAMIC ISLAND -->
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-2xl z-50 flex items-center justify-center gap-2">
+      <div class="w-3 h-3 rounded-full bg-slate-900 border border-slate-700"></div>
+      <div class="w-2 h-2 rounded-full bg-blue-900"></div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div class="pt-2 px-6 flex justify-between items-center text-xs text-slate-400 font-medium z-40">
+      <span id="clock">09:41</span>
+      <div class="flex items-center gap-1.5">
+        <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+        <i data-lucide="battery-charging" class="w-4 h-4 text-emerald-400"></i>
+      </div>
+    </div>
+
+    <!-- MAIN APP SCREEN -->
+    <div id="app-container" class="flex-1 flex flex-col justify-between overflow-hidden">
+      <!-- Injetado via JS -->
+    </div>
+
+  </div>
+
+  <script>
+    // App State
+    const MAX_DAILY_LIMIT_ML = 7000; // Limite máximo diário de segurança (7 Litros)
+
+    let state = {
+      activeTab: 'dashboard',
+      consumedMl: 1800,
+      weightKg: 70,
+      targetMl: 2450,
+      selectedBottleSize: 500,
+      bottleColor: '#00d2ff',
+      ledColor: '#00d2ff',
+      ledInterval: '1h',
+      pulseCalibration: 4.5,
+      limitWarning: '',
+      notifications: [
+        { id: 1, time: '08:00', title: 'Hora de se hidratar!', message: 'Primeiro gole do dia para ativar o metabolismo.', read: true, type: 'light' },
+        { id: 2, time: '10:30', title: 'Lembrete Hydra Smart', message: 'Garrafa acendeu o LED! Beba um pouco de água.', read: true, type: 'light' },
+        { id: 3, time: '13:30', title: 'Alerta de Hidratação', message: 'Mantenha o foco no trabalho/estudo, beba 300ml.', read: false, type: 'light' },
+        { id: 4, time: '16:00', title: 'Lembrete de Tarde', message: 'Sua meta está quase sendo atingida!', read: false, type: 'light' },
+        { id: 5, time: '18:30', title: 'Meta em vista', message: 'Falta pouco para atingir sua meta do dia.', read: false, type: 'light' }
+      ],
+      historyLogs: [
+        { time: '08:15', amount: 300 },
+        { time: '10:30', amount: 500 },
+        { time: '12:45', amount: 400 },
+        { time: '15:10', amount: 600 }
+      ]
+    };
+
+    const BOTTLE_COLORS = [
+      { name: 'Ciano Neve', hex: '#00d2ff', bgClass: 'bg-cyan-500' },
+      { name: 'Preto Matte', hex: '#334155', bgClass: 'bg-slate-700' },
+      { name: 'Verde Esmeralda', hex: '#10b981', bgClass: 'bg-emerald-500' },
+      { name: 'Roxo Místico', hex: '#a855f7', bgClass: 'bg-purple-500' },
+      { name: 'Rosa Coral', hex: '#f43f5e', bgClass: 'bg-rose-500' },
+      { name: 'Laranja Solar', hex: '#f97316', bgClass: 'bg-orange-500' }
+    ];
+
+    function updateClock() {
+      const now = new Date();
+      const hrs = String(now.getHours()).padStart(2, '0');
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      const clockEl = document.getElementById('clock');
+      if (clockEl) clockEl.innerText = `${hrs}:${mins}`;
+    }
+    setInterval(updateClock, 1000);
+
+    function triggerWaterIntake() {
+      if (state.consumedMl + state.selectedBottleSize > MAX_DAILY_LIMIT_ML) {
+        state.limitWarning = `Atenção: Limite diário de segurança (7,0 Litros) atingido! Não é recomendado consumo diário excessivo sem orientação médica.`;
+        render();
+        return;
+      }
+
+      state.limitWarning = '';
+      state.consumedMl += state.selectedBottleSize;
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      state.historyLogs.unshift({ time: timeStr, amount: state.selectedBottleSize });
+      render();
+    }
+
+    function updateWeight(newWeight) {
+      state.weightKg = Number(newWeight);
+      state.targetMl = state.weightKg * 35;
+      render();
+    }
+
+    function updateBottleSize(size) {
+      state.selectedBottleSize = Number(size);
+      state.limitWarning = '';
+      render();
+    }
+
+    function updateBottleColor(hexColor) {
+      state.bottleColor = hexColor;
+      render();
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      render();
+    }
+
+    function render() {
+      const appContainer = document.getElementById('app-container');
+      const percentage = Math.round((state.consumedMl / state.targetMl) * 100);
+      const isGoalReached = state.consumedMl >= state.targetMl;
+
+      let contentHTML = '';
+
+      if (state.activeTab === 'dashboard') {
+        const radius = 70;
+        const circumference = 2 * Math.PI * radius;
+        const progress = Math.min(percentage, 100);
+        const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+        contentHTML = `
+          ${isGoalReached ? `
+            <div class="bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 rounded-2xl p-3 flex items-center gap-3 animate-bounce">
+              <div class="p-2 bg-emerald-500/20 rounded-xl text-emerald-400">
+                <i data-lucide="trophy" class="w-6 h-6"></i>
+              </div>
+              <div>
+                <p class="text-xs font-bold text-emerald-300 uppercase tracking-wide">🎉 Meta Atingida!</p>
+                <p class="text-[11px] text-slate-300">Você atingiu ${state.targetMl} ml hoje! Seu consumo acumulado continua sendo registrado.</p>
+              </div>
+            </div>
+          ` : ''}
+
+          ${state.limitWarning ? `
+            <div class="bg-amber-500/20 border border-amber-500/50 rounded-2xl p-3 flex items-center gap-2.5 text-amber-300 text-xs">
+              <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0 text-amber-400"></i>
+              <p class="leading-tight">${state.limitWarning}</p>
+            </div>
+          ` : ''}
+
+          <!-- CIRCULAR PROGRESS -->
+          <div class="relative flex flex-col items-center justify-center my-2">
+            <svg class="w-52 h-52 transform -rotate-90">
+              <circle cx="104" cy="104" r="${radius}" stroke="currentColor" stroke-width="12" class="text-slate-800" fill="transparent" />
+              <circle cx="104" cy="104" r="${radius}" stroke="${isGoalReached ? '#10b981' : state.bottleColor}" stroke-width="12" 
+                class="transition-all duration-700 ease-out" 
+                fill="transparent" 
+                stroke-dasharray="${circumference}" 
+                stroke-dashoffset="${strokeDashoffset}" 
+                stroke-linecap="round" />
+            </svg>
+            <div class="absolute flex flex-col items-center text-center">
+              <span class="text-3xl font-extrabold tracking-tight text-white">${(state.consumedMl / 1000).toFixed(2)} L</span>
+              <span class="text-xs font-medium text-slate-400">de ${(state.targetMl / 1000).toFixed(2)} L recomendados</span>
+              <span class="mt-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${isGoalReached ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'}">
+                ${percentage}% Concluído
+              </span>
+            </div>
+          </div>
+
+          <!-- BOTÃO SIMULAÇÃO DO GATILHO DA TAMPA -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center space-y-3">
+            <div class="flex justify-between items-center text-xs text-slate-400">
+              <span>Simular Bico / Gatilho</span>
+              <span class="font-semibold" style="color: ${state.bottleColor}">+${state.selectedBottleSize} ml/dose</span>
+            </div>
+            <button onclick="triggerWaterIntake()" class="w-full py-3.5 px-4 rounded-xl font-bold text-white transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2" style="background: ${isGoalReached ? 'linear-gradient(to right, #059669, #0d9488)' : `linear-gradient(to right, ${state.bottleColor}, #2563eb)`}">
+              <i data-lucide="droplet" class="w-5 h-5"></i>
+              <span>${isGoalReached ? `Continuar Bebendo (+${state.selectedBottleSize}ml)` : `Simular Gatilho (+${state.selectedBottleSize}ml)`}</span>
+            </button>
+            <p class="text-[10px] text-slate-500">Acoplada garrafa de <b>${state.selectedBottleSize >= 1000 ? (state.selectedBottleSize/1000) + 'L' : state.selectedBottleSize + 'ml'}</b>. Limite diário de segurança: 7.0L.</p>
+          </div>
+
+          <!-- RESUMO DE RECOMENDAÇÃO -->
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <i data-lucide="scale" class="w-5 h-5 text-indigo-400"></i>
+              <div>
+                <p class="text-slate-400 text-[10px]">Seu Peso</p>
+                <p class="font-semibold text-slate-200">${state.weightKg} kg</p>
+              </div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <i data-lucide="target" class="w-5 h-5 text-cyan-400"></i>
+              <div>
+                <p class="text-slate-400 text-[10px]">Regra Padrão</p>
+                <p class="font-semibold text-slate-200">35 ml/kg</p>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (state.activeTab === 'alerts') {
+        const unreadCount = state.notifications.filter(n => !n.read).length;
+        contentHTML = `
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-base font-bold text-slate-100">Avisos & Lembretes</h2>
+                <p class="text-xs text-slate-400">Horários em que o LED da tampa acendeu para avisar.</p>
+              </div>
+              <span class="text-xs font-semibold bg-cyan-500/20 text-cyan-300 px-2.5 py-1 rounded-full border border-cyan-500/30">
+                ${unreadCount > 0 ? `${unreadCount} novos` : 'Todos lidos'}
+              </span>
+            </div>
+
+            <!-- LISTA DE LEMBRETES -->
+            <div class="space-y-2.5">
+              ${state.notifications.map(n => `
+                <div class="bg-slate-900 border ${n.read ? 'border-slate-800/80 opacity-80' : 'border-cyan-500/40 bg-slate-900/90'} p-3.5 rounded-2xl flex items-start gap-3 transition-all">
+                  <div class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 shrink-0 mt-0.5">
+                    <i data-lucide="bell-ring" class="w-4 h-4"></i>
+                  </div>
+                  <div class="flex-1 space-y-0.5">
+                    <div class="flex justify-between items-center">
+                      <p class="text-xs font-bold text-slate-200">${n.title}</p>
+                      <span class="text-[10px] font-mono text-cyan-400 bg-slate-800 px-2 py-0.5 rounded-md">${n.time}</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-tight">${n.message}</p>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] text-slate-400 flex items-center gap-2">
+              <i data-lucide="info" class="w-4 h-4 text-cyan-400 shrink-0"></i>
+              <p>A tampa pisca o LED RGB sincronizado nestes horários coerentes com sua rotina.</p>
+            </div>
+          </div>
+        `;
+      } else if (state.activeTab === 'calculator') {
+        contentHTML = `
+          <div class="space-y-4">
+            <div>
+              <h2 class="text-base font-bold text-slate-100">Calculadora de Meta Diária</h2>
+              <p class="text-xs text-slate-400">Ajuste seu peso conforme a orientação nutricional (35ml por kg de peso corporal).</p>
+            </div>
+
+            <!-- PESO SLIDER -->
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-slate-300">Peso Corporal:</span>
+                <span class="text-lg font-bold text-cyan-400">${state.weightKg} kg</span>
+              </div>
+              <input type="range" min="40" max="130" value="${state.weightKg}" oninput="updateWeight(this.value)" class="w-full accent-cyan-500 h-2 bg-slate-800 rounded-lg cursor-pointer">
+              <div class="text-[11px] text-slate-400 bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
+                <span class="font-semibold text-cyan-300">Cálculo Exato:</span> ${state.weightKg} kg × 35 ml = <strong class="text-white">${state.targetMl} ml</strong> (${(state.targetMl/1000).toFixed(2)} Litros/dia)
+              </div>
+            </div>
+
+            <!-- SELEÇÃO DE TAMANHO DA GARRAFA -->
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-slate-300">Tamanho do Recipiente Acoplado</h3>
+                <span class="text-[10px] text-emerald-400 font-medium">✓ Histórico Preservado (${(state.consumedMl/1000).toFixed(2)}L)</span>
+              </div>
+              <p class="text-[11px] text-slate-400">A mesma tampa inteligente adapta-se a qualquer corpo da linha Hydra Smart sem perder os dados acumulados:</p>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                ${[300, 500, 1000, 2000, 3000].map(size => `
+                  <button onclick="updateBottleSize(${size})" class="py-2 px-3 rounded-xl border text-left flex justify-between items-center transition-all ${state.selectedBottleSize === size ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300 font-bold' : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'}">
+                    <span>${size >= 1000 ? (size/1000) + ' L' : size + ' ml'}</span>
+                    ${state.selectedBottleSize === size ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400"></i>' : ''}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (state.activeTab === 'history') {
+        contentHTML = `
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <div>
+                <h2 class="text-base font-bold text-slate-100">Histórico de Hoje</h2>
+                <p class="text-xs text-slate-400">Registros automáticos enviados via Bluetooth pela tampa.</p>
+              </div>
+              <span class="text-xs font-semibold bg-slate-800 text-cyan-400 px-2.5 py-1 rounded-full border border-slate-700">
+                ${state.historyLogs.length} acionamentos
+              </span>
+            </div>
+
+            <!-- LOGS -->
+            <div class="space-y-2">
+              ${state.historyLogs.map(log => `
+                <div class="bg-slate-900 border border-slate-800/80 p-3 rounded-xl flex justify-between items-center text-xs">
+                  <div class="flex items-center gap-2.5">
+                    <div class="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg">
+                      <i data-lucide="droplet" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                      <p class="font-semibold text-slate-200">Gatilho Pressionado</p>
+                      <p class="text-[10px] text-slate-400">${log.time} • Sensor de fluxo</p>
+                    </div>
+                  </div>
+                  <span class="font-bold text-emerald-400 text-sm">+${log.amount} ml</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else if (state.activeTab === 'settings') {
+        contentHTML = `
+          <div class="space-y-4">
+            <div>
+              <h2 class="text-base font-bold text-slate-100">Personalização & Tampa</h2>
+              <p class="text-xs text-slate-400">Ajuste as cores da sua garrafa e configurações do sensor.</p>
+            </div>
+
+            <!-- SELEÇÃO DE CORES DA GARRAFA -->
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-slate-300">Cor da Garrafa Hydra Smart</h3>
+                <i data-lucide="palette" class="w-4 h-4 text-cyan-400"></i>
+              </div>
+              <p class="text-[11px] text-slate-400">Escolha a cor do corpo da sua garrafa para personalizar a interface:</p>
+              <div class="grid grid-cols-3 gap-2 pt-1">
+                ${BOTTLE_COLORS.map(c => `
+                  <button onclick="updateBottleColor('${c.hex}')" class="p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${state.bottleColor === c.hex ? 'border-cyan-400 bg-cyan-500/10 font-bold text-white' : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'}">
+                    <div class="w-6 h-6 rounded-full border border-slate-700 shadow-inner" style="background-color: ${c.hex}"></div>
+                    <span class="text-[10px] text-center leading-tight">${c.name}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <h3 class="text-xs font-semibold text-slate-300">Lembrete Luminoso (LED da Tampa)</h3>
+              <p class="text-[11px] text-slate-400">O LED avisa no corpo da garrafa quando é hora de beber água sem precisar do celular.</p>
+              <div class="flex items-center gap-3">
+                <input type="color" value="${state.ledColor}" class="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0">
+                <span class="text-xs text-slate-300 font-medium">Cor de Alerta Ativa</span>
+              </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <h3 class="text-xs font-semibold text-slate-300">Calibração do Sensor</h3>
+              <p class="text-[11px] text-slate-400">Ajuste preciso de contagem por rotação de hélice magnética (Pulsos/ml).</p>
+              <div class="flex justify-between items-center text-xs bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-slate-400">Fator Atual:</span>
+                <span class="font-mono text-cyan-400 font-bold">${state.pulseCalibration} pulsos = 1 ml</span>
+              </div>
+            </div>
+
+            <!-- INFOS ACADÊMICAS -->
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-1 text-center">
+              <p class="text-xs font-bold text-slate-200">Projeto de Design de Produto</p>
+              <p class="text-[11px] text-cyan-400 font-medium">Desenvolvido por Igor Simões Agra - Sistemas de Informação</p>
+            </div>
+          </div>
+        `;
+      }
+
+      appContainer.innerHTML = `
+        <!-- HEADER DE CONECTIVIDADE DA GARRAFA -->
+        <div class="px-5 py-2 flex items-center justify-between border-b border-slate-800/60 bg-slate-900/40">
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <i data-lucide="droplet" class="w-5 h-5 fill-current" style="color: ${state.bottleColor}"></i>
+              <span class="absolute -top-1 -right-1 flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style="background-color: ${state.bottleColor}"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2" style="background-color: ${state.bottleColor}"></span>
+              </span>
+            </div>
+            <div>
+              <h1 class="text-xs font-bold tracking-wide uppercase text-slate-200">Hydra Smart</h1>
+              <p class="text-[10px] font-medium" style="color: ${state.bottleColor}">Tampa Online • Bluetooth 5.2</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-700">
+            <i data-lucide="battery-charging" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span class="font-semibold text-slate-300">88%</span>
+          </div>
+        </div>
+
+        <!-- MAIN CONTENT AREA -->
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-slate-100">
+          ${contentHTML}
+        </div>
+
+        <!-- BOTTOM NAVIGATION -->
+        <div class="bg-slate-900/90 backdrop-blur-md border-t border-slate-800 px-2 py-2 flex justify-around items-center">
+          <button onclick="switchTab('dashboard')" class="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all ${state.activeTab === 'dashboard' ? 'font-semibold' : 'text-slate-400'}" style="color: ${state.activeTab === 'dashboard' ? state.bottleColor : ''}">
+            <i data-lucide="home" class="w-5 h-5"></i>
+            <span class="text-[9px]">Início</span>
+          </button>
+          <button onclick="switchTab('alerts')" class="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all relative ${state.activeTab === 'alerts' ? 'font-semibold' : 'text-slate-400'}" style="color: ${state.activeTab === 'alerts' ? state.bottleColor : ''}">
+            <i data-lucide="bell" class="w-5 h-5"></i>
+            <span class="text-[9px]">Avisos</span>
+            <span class="absolute top-1 right-2 w-2 h-2 rounded-full bg-cyan-400"></span>
+          </button>
+          <button onclick="switchTab('calculator')" class="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all ${state.activeTab === 'calculator' ? 'font-semibold' : 'text-slate-400'}" style="color: ${state.activeTab === 'calculator' ? state.bottleColor : ''}">
+            <i data-lucide="calculator" class="w-5 h-5"></i>
+            <span class="text-[9px]">Meta 35ml</span>
+          </button>
+          <button onclick="switchTab('history')" class="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all ${state.activeTab === 'history' ? 'font-semibold' : 'text-slate-400'}" style="color: ${state.activeTab === 'history' ? state.bottleColor : ''}">
+            <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+            <span class="text-[9px]">Histórico</span>
+          </button>
+          <button onclick="switchTab('settings')" class="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all ${state.activeTab === 'settings' ? 'font-semibold' : 'text-slate-400'}" style="color: ${state.activeTab === 'settings' ? state.bottleColor : ''}">
+            <i data-lucide="palette" class="w-5 h-5"></i>
+            <span class="text-[9px]">Cores</span>
+          </button>
+        </div>
+      `;
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
